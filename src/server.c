@@ -1,5 +1,4 @@
 #include "../include/server.h"
-#include "../include/copy.h"
 #include "../include/open.h"
 
 int main(int argc, char *argv[])
@@ -16,7 +15,7 @@ int main(int argc, char *argv[])
 
     // Set inport and outport value
     opts.inport  = PORT;
-    opts.outport = PORT;
+    opts.outport  = PORT;
 
     // Sending data to the client
     parseArguments(argc, argv, &opts);
@@ -47,10 +46,11 @@ static void parseArguments(int argc, char **argv, struct options *opts)
 {
     // Define option type
     static struct option long_options[] = {
-        {"inaddress",  required_argument, NULL, 'n'},
-        {"outaddress", required_argument, NULL, 'N'},
-        {"inport",     required_argument, NULL, 't'},
-        {"outport",    required_argument, NULL, 'T'},
+        {"server",       no_argument,       NULL, 's'},
+        {"client",       no_argument,       NULL, 'c'},
+        {"input",  required_argument, NULL, 'i'},
+        {"address",  required_argument, NULL, 'n'},
+        {"port",     required_argument, NULL, 'p'},
         {"help",       no_argument,       NULL, 'h'},
         {NULL,         0,                 NULL, 0  }
     };
@@ -59,59 +59,86 @@ static void parseArguments(int argc, char **argv, struct options *opts)
     int opt;
     int err;
     opterr = 0;
-    while((opt = getopt_long(argc, argv, "hn:N:t:T:", long_options, NULL)) != -1)
+    while((opt = getopt_long(argc, argv, "hcsi:n:p:", long_options, NULL)) != -1)
     {
         switch(opt)
         {
-            // Get input from network socket
+            // To get which type to start game
+            case 'c':
+            {
+                opts->client = true;
+                break;
+            }
+
+            case 's':
+            {
+                opts->server = true;
+                break;
+            }
+            
+            // Get user input type (keyboard, console or random)
+            case 'i':
+            {
+                opts->input = optarg;
+                handleArguments(argv[0], opts->input);
+                break;
+            }
+
+            // Get IP address
             case 'n':
             {
                 opts->inaddress = optarg;
-                break;
-            }
-            case 'N':
-            {
                 opts->outaddress = optarg;
                 break;
             }
 
-            case 't':
+            // Get port
+            case 'p':
             {
                 opts->inport = convertPort(optarg, &err);
-
-                if(err != ERR_NONE)
-                {
-                    usage(argv[0], EXIT_FAILURE, "Inport most be between 0 and 65535");
-                }
-                break;
-            }
-            case 'T':
-            {
                 opts->outport = convertPort(optarg, &err);
 
                 if(err != ERR_NONE)
                 {
-                    usage(argv[0], EXIT_FAILURE, "Outport most be between 0 and 65535");
+                    usage(argv[0], EXIT_FAILURE, "Port most be between 0 and 65535");
                 }
                 break;
             }
 
             case 'h':
-                usage(argv[0], EXIT_SUCCESS, NULL);
+                usage(argv[0], EXIT_SUCCESS, "How to use program");
+
             default:
-                usage(argv[0], EXIT_FAILURE, NULL);
+                usage(argv[0], EXIT_FAILURE, "Invalid arguments");
         }
     }
 }
 
 // Function to handle arguments
-static void handleArguments(const char *filter, char (**filter_fun)(char))
+static void handleArguments(const char *program_name, const char str)
 {
-    // Assign filter type to function pointer
-    applyFilter(filter, filter_fun);
-    if(filter_fun == NULL)
+    // If user input is keyboard
+    if (str == 'k')
     {
-        printf("Can't assign filter function");
+        openKeyboard();
+    } 
+    
+    // If user input is joysticks
+    else if (str == 'j') 
+    {
+
+    }
+
+    // If user input is random
+    else if (str == 'r') 
+    {
+
+    }
+
+    // If invalid user input
+    else
+    {
+        usage(program_name, EXIT_FAILURE, "Invalid user input");
     }
 }
 
@@ -123,14 +150,39 @@ _Noreturn static void usage(const char *program_name, int exit_code, const char 
         fprintf(stderr, "%s\n", message);
     }
 
-    fprintf(stderr, "Usage: %s [-h] [-n <address>] [-N <address>] [-t <port>] [-T <port>]\n", program_name);
+    fprintf(stderr, "Usage: %s [-h] [-c or -s] [-i <input>] [-n <address>] [-p <port>]\n", program_name);
     fputs("Options:\n", stderr);
     fputs("  -h, --help                           Display this help message\n", stderr);
-    fputs("  -n <address>, --inaddress <address>  read from the network socket <address>\n", stderr);
-    fputs("  -N <address>, --outaddress <address> write to the network socket <address>\n", stderr);
-    fputs("  -t <port>, --inaddress <address>     read from the network socket <address>\n", stderr);
-    fputs("  -T <port>, --outaddress <address>    write to the network socket <address>\n", stderr);
+    fputs("  -c, --client                           Run the game as client\n", stderr);
+    fputs("  -s, --server                           Run the game as server\n", stderr);
+    fputs("  -i <input>, --input <input>  User input type <input>: 'k' for keyboard, 'j' for joysticks or 'r' for random moves\n", stderr);
+    fputs("  -n <address>, --address <address>  Create network socket <address>\n", stderr);
+    fputs("  -p <port>, --address <address>    Create port for network socket <port>\n", stderr);
     exit(exit_code);
+}
+
+// Function to check number of input are passing through command-line
+static void checkInput(const char *program_name, const struct options *opts)
+{
+    int count;
+
+    // Check if user has run the game as client
+    if(opts->client == true)
+    {
+        count += 1;
+    }
+
+    // Check if user has run the game as server
+    if(opts->server == true)
+    {
+        count += 1;
+    }
+
+    // Check number of arguments
+    if (count != 1) 
+    {
+        usage(program_name, EXIT_FAILURE, "Only run game as Client OR Server");
+    }
 }
 
 // Function to get which type of input are passing through command-line

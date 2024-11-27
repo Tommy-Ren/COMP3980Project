@@ -26,6 +26,13 @@
 // Declare type of option
 struct options
 {
+    // For start game
+    bool client;
+    bool server;
+    
+    // For user input
+    char input;
+
     // For network socket
     char     *inaddress;
     char     *outaddress;
@@ -35,7 +42,7 @@ struct options
 
 // Get the data to command-line
 static void           parseArguments(int argc, char **argv, struct options *opts);
-static void           handleArguments(const char *filter, char (**filter_fun)(char));
+static void           handleArguments(const char *program_name, const char str);
 _Noreturn static void usage(const char *program_name, int exit_code, const char *message);
 static int            getInput(const struct options *opts, int *err);
 
