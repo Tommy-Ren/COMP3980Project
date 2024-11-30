@@ -23,6 +23,9 @@
 #define PORT 9999
 #define ERR_NONE 0
 
+// Global variable
+static int is_server;
+
 // Declare type of option
 struct options
 {
@@ -31,7 +34,7 @@ struct options
     bool server;
     
     // For user input
-    char input;
+    char *input;
 
     // For network socket
     char     *inaddress;
@@ -39,10 +42,5 @@ struct options
     in_port_t inport;
     in_port_t outport;
 };
-
-// Run server and Create process
-_Noreturn void runServer(int fd_server, char (*filter_fun)(char), int err);
-void           createProcess(int fd_client, char (*filter_fun)(char), int *err);
-int            handleClient(int fd_client, char (*filter_fun)(char), int *err);
 
 #endif    // SERVER_H
