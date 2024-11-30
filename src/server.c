@@ -1,6 +1,13 @@
 #include "../include/server.h"
 #include "../include/open.h"
 
+// Helper functions dealing with arguments
+static void           checkArguments(const char *binary_name, const struct options *opts);
+static void           parseArguments(int argc, char **argv, struct options *opts);
+static void           handleArguments(const char *program_name, const char str);
+_Noreturn static void usage(const char *program_name, int exit_code, const char *message);
+static int            getInput(const struct options *opts, int *err);
+
 int main(int argc, char *argv[])
 {
     // Initialize variable
@@ -19,6 +26,9 @@ int main(int argc, char *argv[])
 
     // Sending data to the client
     parseArguments(argc, argv, &opts);
+
+    // Check arguments
+    check_arguments(argv[0], &opts);
 
     // Initialize input and output file descriptor
     fd_server = getInput(&opts, &err);
@@ -46,36 +56,33 @@ static void parseArguments(int argc, char **argv, struct options *opts)
 {
     // Define option type
     static struct option long_options[] = {
-        {"server",       no_argument,       NULL, 's'},
-        {"client",       no_argument,       NULL, 'c'},
-        {"input",  required_argument, NULL, 'i'},
-        {"address",  required_argument, NULL, 'n'},
-        {"port",     required_argument, NULL, 'p'},
-        {"help",       no_argument,       NULL, 'h'},
-        {NULL,         0,                 NULL, 0  }
+        {"server",	no_argument,       NULL, 's'},
+        {"client",	no_argument,       NULL, 'c'},
+        {"input", 	required_argument, NULL, 'i'},
+        {"address", required_argument, NULL, 'n'},
+        {"port",    required_argument, NULL, 'p'},
+        {"help",    no_argument,       NULL, 'h'},
+        {NULL,      0,                 NULL,  0 }
     };
 
     // Parsing command-line arguments
     int opt;
     int err;
     opterr = 0;
-    while((opt = getopt_long(argc, argv, "hcsi:n:p:", long_options, NULL)) != -1)
+    while((opt = getopt_long(argc, argv, "hsci:n:p:", long_options, NULL)) != -1)
     {
         switch(opt)
         {
-            // To get which type to start game
-            case 'c':
-            {
-                opts->client = true;
-                break;
-            }
-
             case 's':
             {
                 opts->server = true;
                 break;
             }
-            
+            case 'c':
+            {
+                opts->client = true;
+                break;
+            }
             // Get user input type (keyboard, console or random)
             case 'i':
             {
@@ -83,7 +90,6 @@ static void parseArguments(int argc, char **argv, struct options *opts)
                 handleArguments(argv[0], opts->input);
                 break;
             }
-
             // Get IP address
             case 'n':
             {
@@ -91,7 +97,6 @@ static void parseArguments(int argc, char **argv, struct options *opts)
                 opts->outaddress = optarg;
                 break;
             }
-
             // Get port
             case 'p':
             {
@@ -104,10 +109,8 @@ static void parseArguments(int argc, char **argv, struct options *opts)
                 }
                 break;
             }
-
             case 'h':
                 usage(argv[0], EXIT_SUCCESS, "How to use program");
-
             default:
                 usage(argv[0], EXIT_FAILURE, "Invalid arguments");
         }
@@ -121,8 +124,8 @@ static void handleArguments(const char *program_name, const char str)
     if (str == 'k')
     {
         openKeyboard();
-    } 
-    
+    }
+
     // If user input is joysticks
     else if (str == 'j') 
     {
@@ -150,34 +153,31 @@ _Noreturn static void usage(const char *program_name, int exit_code, const char 
         fprintf(stderr, "%s\n", message);
     }
 
-    fprintf(stderr, "Usage: %s [-h] [-c or -s] [-i <input>] [-n <address>] [-p <port>]\n", program_name);
+    fprintf(stderr, "Usage: %s [-h] [-s or -c] [-i <input>] [-n <address>] [-p <port>]\n", program_name);
     fputs("Options:\n", stderr);
     fputs("  -h, --help                           Display this help message\n", stderr);
-    fputs("  -c, --client                           Run the game as client\n", stderr);
     fputs("  -s, --server                           Run the game as server\n", stderr);
-    fputs("  -i <input>, --input <input>  User input type <input>: 'k' for keyboard, 'j' for joysticks or 'r' for random moves\n", stderr);
-    fputs("  -n <address>, --address <address>  Create network socket <address>\n", stderr);
-    fputs("  -p <port>, --address <address>    Create port for network socket <port>\n", stderr);
+    fputs("  -c, --client                           Run the game as client\n", stderr);
+    fputs("  -i <input>, --input <input>	'k' for keyboard, 'j' for joysticks, 'r' for random\n", stderr);
+    fputs("  -n <address>, --address <address>	Create network socket <address>\n", stderr);
+    fputs("  -p <port>, --address <address>	Create port for network socket <port>\n", stderr);
     exit(exit_code);
 }
 
 // Function to check number of input are passing through command-line
-static void checkInput(const char *program_name, const struct options *opts)
+static void checkArguments(const char *program_name, const struct options *opts)
 {
     int count;
-
     // Check if user has run the game as client
     if(opts->client == true)
     {
         count += 1;
     }
-
     // Check if user has run the game as server
     if(opts->server == true)
     {
         count += 1;
     }
-
     // Check number of arguments
     if (count != 1) 
     {

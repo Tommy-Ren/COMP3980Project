@@ -40,12 +40,6 @@ struct options
     in_port_t outport;
 };
 
-// Get the data to command-line
-static void           parseArguments(int argc, char **argv, struct options *opts);
-static void           handleArguments(const char *program_name, const char str);
-_Noreturn static void usage(const char *program_name, int exit_code, const char *message);
-static int            getInput(const struct options *opts, int *err);
-
 // Run server and Create process
 _Noreturn void runServer(int fd_server, char (*filter_fun)(char), int err);
 void           createProcess(int fd_client, char (*filter_fun)(char), int *err);
