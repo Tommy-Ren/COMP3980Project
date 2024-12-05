@@ -4,8 +4,8 @@
 #include <stdlib.h>
 
 // Screen size
-#define SCREEN_WIDTH 100
-#define SCREEN_HEIGHT 10
+#define SCREEN_WIDTH 80
+#define SCREEN_HEIGHT 24
 
 // Maximum number of bullets
 #define MAX_BULLETS 200

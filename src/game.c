@@ -162,7 +162,7 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
     }
     else
     {
-        printf("Error!\n");
+        printf("Game Over!\n");
     }
 }
 
