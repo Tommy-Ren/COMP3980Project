@@ -4,13 +4,13 @@
 
 #include "../include/game.h"
 
-// Private function prototypes
+// Helper functions prototypes
 static void            render_screen(const Player *player1, const Player *player2, const Bullet bullets[]);
 static void            handle_bullets(Bullet bullets[], Player *opponent);
 static void            check_bullets_collide(Bullet bullets[]);
 static void            shoot_bullet(Bullet bullets[], const Player *shooter);
 static int             find_inactive_bullet(Bullet bullets[]);
-static char            get_random_input(const Player *player1, const Player *player2, Bullet bullets[]);
+static char            get_random_input(void);
 static char            get_joystick_input(SDL_GameController *controller);
 static struct network *get_socket(bool is_server, const char *ip_address, in_port_t port, int *err);
 void                   sleep_in_microseconds(long time);
@@ -102,7 +102,12 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
         else if(strcmp(input_method, "rd") == 0)
         {
             // Generate random input based on timer
-            input = get_random_input(&local_player, &remote_player, bullets);
+            input = get_random_input();
+        }
+        else
+        {
+            fprintf(stderr, "Unknown input method '%s'.\n", input_method);
+            return;
         }
 
         if(input != 0)
@@ -241,37 +246,33 @@ static int find_inactive_bullet(Bullet bullets[])
     return -1;    // No inactive bullet found
 }
 
-static char get_random_input(const Player *player1, const Player *player2, Bullet bullets[])
+static char get_random_input(void)
 {
     static int counter = 0;
+    int        random_direction;
+
     counter++;
 
     // Check for shoot every 100 frames
     if(counter % MAX_COUNTER == 0)
     {
-        shoot_bullet(bullets, player1);    // Player 1 shoots
-        shoot_bullet(bullets, player2);    // Player 2 shoots
-    }
-    else
-    {
-        // Check for direction change every frames
-        int random_direction = rand() % 4;    // Random direction (0-3)
-        switch(random_direction)
-        {
-            case 0:
-                return 'w';    // Up
-            case 1:
-                return 'a';    // Left
-            case 2:
-                return 's';    // Down
-            case 3:
-                return 'd';    // Right
-            default:
-                return '0';
-        }
+        return ' ';    // Space to shoot
     }
 
-    return 0;    // No movement for this frame
+    random_direction = rand() % 4;    // Random direction (0-3)
+    switch(random_direction)
+    {
+        case 0:
+            return 'w';    // Up
+        case 1:
+            return 'a';    // Left
+        case 2:
+            return 's';    // Down
+        case 3:
+            return 'd';    // Right
+        default:
+            return '0';
+    }
 }
 
 static char get_joystick_input(SDL_GameController *controller)

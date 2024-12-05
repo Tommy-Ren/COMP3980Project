@@ -5,13 +5,6 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
     struct network *ctx = malloc(sizeof(struct network));
     Player          temp;
 
-    // Check if network context can't be created
-    if(ctx == NULL)
-    {
-        perror("Failed to allocate memory for network context");
-        return NULL;
-    }
-
     ctx->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(ctx->sockfd < 0)
     {
@@ -24,6 +17,7 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
     if(*err != 0)
     {
         close(ctx->sockfd);
+        free(ctx);
         exit(EXIT_FAILURE);
     }
 
@@ -32,6 +26,7 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
     {
         perror("Bind failed");
         close(ctx->sockfd);
+        free(ctx);
         exit(EXIT_FAILURE);
     }
     printf("Server initialized and waiting for client...\n");
@@ -44,6 +39,7 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
     {
         perror("Failed to receive initial message");
         close(ctx->sockfd);
+        free(ctx);
         exit(EXIT_FAILURE);
     }
 
@@ -56,8 +52,9 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
 // Function to open client network socket
 struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, int *err)
 {
-    struct network *ctx  = malloc(sizeof(struct network));
-    Player          temp = {0};
+    struct network *ctx                 = malloc(sizeof(struct network));
+    char            buffer[BUFFER_SIZE] = {0};
+    Player          temp                = {0};
 
     // Check if network context can't be created
     if(ctx == NULL)
@@ -77,19 +74,26 @@ struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, 
     setupNetworkAddress(&(ctx->peer_addr), &(ctx->peer_addr_len), ip_address, port, err);
     if(*err != 0)
     {
+        perror("Fa");
         close(ctx->sockfd);
+        free(ctx);
         exit(EXIT_FAILURE);
     }
 
     // Send an initial message to the server
-    if(sendto(ctx->sockfd, &temp, BUFFER_SIZE, 0, (struct sockaddr *)&(ctx->peer_addr), ctx->peer_addr_len) < 0)
+    memcpy(buffer, &temp, sizeof(Player));
+    if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&(ctx->peer_addr), ctx->peer_addr_len) < 0)
     {
         perror("Failed to send initial message");
-        close(ctx->sockfd);
+        if(ctx->sockfd >= 0)
+        {
+            close(ctx->sockfd);
+        }
+        free(ctx);
         exit(EXIT_FAILURE);
     }
-    printf("Connected to server! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
 
+    printf("Connected to server! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
     return ctx;
 }
 
@@ -163,19 +167,8 @@ in_port_t convertPort(const char *str, int *err)
 
 void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets)
 {
-    // Calculate the size needed for player and bullet data
-    size_t data_size = sizeof(Player) + MAX_BULLETS * sizeof(Bullet);
-
-    // Allocate buffer based on calculated data_size
-    char *buffer = malloc(data_size);
-
-    // Ensure that BUFFER_SIZE is large enough to hold the data
-    if(data_size > BUFFER_SIZE)
-    {
-        fprintf(stderr, "Buffer size is too small for player and bullet data!\n");
-        free(buffer);
-        return;
-    }
+    // Calculate the size of the data to be sent
+    char *buffer = malloc(BUFFER_SIZE);
 
     // Check if buffer created successfully
     if(buffer == NULL)
@@ -185,7 +178,7 @@ void send_game_state(struct network *ctx, const Player *player, const Bullet *bu
     }
 
     // Initialize the buffer with 0s
-    memset(buffer, 0, data_size);
+    memset(buffer, 0, BUFFER_SIZE);
 
     // Copy player state to the buffer
     memcpy(buffer, player, sizeof(Player));
@@ -194,7 +187,7 @@ void send_game_state(struct network *ctx, const Player *player, const Bullet *bu
     memcpy(buffer + sizeof(Player), bullets, MAX_BULLETS * sizeof(Bullet));
 
     // Send the buffer to the peer
-    if(sendto(ctx->sockfd, buffer, data_size, 0, (struct sockaddr *)&ctx->peer_addr, ctx->peer_addr_len) < 0)
+    if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&ctx->peer_addr, ctx->peer_addr_len) < 0)
     {
         perror("Failed to send game state");
     }

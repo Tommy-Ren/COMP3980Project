@@ -4,22 +4,9 @@
 
 #include "../include/game.h"
 #include "../include/network.h"
-#include <arpa/inet.h>
-#include <errno.h>
 #include <getopt.h>
-#include <netinet/in.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#define PORT 12345
-#define ERR_NONE 0
 
 // Declare type of option
 struct options
@@ -29,13 +16,11 @@ struct options
     bool server;
 
     // For user input
-    char *input;
+    const char *input;
 
     // For network socket
-    char     *inaddress;
-    char     *outaddress;
-    in_port_t inport;
-    in_port_t outport;
+    char     *ip_address;
+    in_port_t port;
 };
 
 // Helper functions dealing with arguments
@@ -56,8 +41,8 @@ int main(int argc, char *argv[])
     memset(&opts, 0, sizeof(opts));
 
     // Set inport and outport value
-    opts.inport  = PORT;
-    opts.outport = PORT;
+    opts.port  = PORT;
+    opts.input = "kb";
 
     // Sending data to the client
     parse_arguments(argc, argv, &opts);
@@ -72,9 +57,9 @@ int main(int argc, char *argv[])
     }
 
     // Start the game
-    if(opts.inaddress != NULL || opts.outaddress != NULL)
+    if(opts.ip_address != NULL)
     {
-        start_game(is_server, opts.inaddress, opts.inport, opts.input, &err);
+        start_game(is_server, opts.ip_address, opts.port, opts.input, &err);
     }
     else
     {
@@ -133,16 +118,14 @@ static void parse_arguments(int argc, char **argv, struct options *opts)
             // Get IP address
             case 'n':
             {
-                opts->inaddress  = optarg;
-                opts->outaddress = optarg;
+                opts->ip_address = optarg;
                 break;
             }
 
             // Get port
             case 'p':
             {
-                opts->inport  = convertPort(optarg, &err);
-                opts->outport = convertPort(optarg, &err);
+                opts->port = convertPort(optarg, &err);
 
                 if(err != ERR_NONE)
                 {

@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE (sizeof(Player) + (MAX_BULLETS * sizeof(Bullet)))
+#define PORT 12345
 #define ERR_NONE 0
 #define ERR_NO_DIGITS 1
 #define ERR_OUT_OF_RANGE 2
