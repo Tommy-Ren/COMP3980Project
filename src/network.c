@@ -1,93 +1,238 @@
 #include "../include/network.h"
-#include "../include/constans.h"
 
-struct sockaddr_in server_sock_addr(char *ip) {
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    if (ip == NULL) {
-        serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else {
-        inet_aton(ip, &serv_addr.sin_addr);
+struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, int *err)
+{
+    struct network *ctx = malloc(sizeof(struct network));
+    Player          temp;
+
+    // Check if network context can't be created
+    if(ctx == NULL)
+    {
+        perror("Failed to allocate memory for network context");
+        return NULL;
     }
-    serv_addr.sin_port = htons(1234);
-    return serv_addr;
+
+    ctx->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(ctx->sockfd < 0)
+    {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set up local address structure
+    setupNetworkAddress(&(ctx->local_addr), &(ctx->local_addr_len), ip_address, port, err);
+    if(*err != 0)
+    {
+        close(ctx->sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Bind the socket to the local address
+    if(bind(ctx->sockfd, (struct sockaddr *)&(ctx->local_addr), ctx->local_addr_len) < 0)
+    {
+        perror("Bind failed");
+        close(ctx->sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Server initialized and waiting for client...\n");
+
+    // Ensure correct address length for recvfrom
+    ctx->peer_addr_len = sizeof(ctx->peer_addr);
+
+    // Wait for the first message to get the client's address
+    if(recvfrom(ctx->sockfd, &temp, sizeof(temp), 0, (struct sockaddr *)&(ctx->peer_addr), &(ctx->peer_addr_len)) < 0)
+    {
+        perror("Failed to receive initial message");
+        close(ctx->sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Debugging the peer address
+    printf("Client connected! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
+
+    return ctx;
 }
 
-struct sockaddr_in client_sock_addr() {
-    struct sockaddr_in client_addr;
-    memset(&client_addr, 0, sizeof(struct sockaddr));
-    client_addr.sin_family = AF_INET;
-    client_addr.sin_addr.s_addr = INADDR_ANY;
-    client_addr.sin_port = 0;
-    return client_addr;
+// Function to open client network socket
+struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, int *err)
+{
+    struct network *ctx  = malloc(sizeof(struct network));
+    Player          temp = {0};
+
+    // Check if network context can't be created
+    if(ctx == NULL)
+    {
+        perror("Failed to allocate memory for network context");
+        return NULL;
+    }
+
+    ctx->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(ctx->sockfd < 0)
+    {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set up peer address structure
+    setupNetworkAddress(&(ctx->peer_addr), &(ctx->peer_addr_len), ip_address, port, err);
+    if(*err != 0)
+    {
+        close(ctx->sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Send an initial message to the server
+    if(sendto(ctx->sockfd, &temp, BUFFER_SIZE, 0, (struct sockaddr *)&(ctx->peer_addr), ctx->peer_addr_len) < 0)
+    {
+        perror("Failed to send initial message");
+        close(ctx->sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Connected to server! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
+
+    return ctx;
 }
 
+// Set up address structure
+void setupNetworkAddress(struct sockaddr_storage *addr, socklen_t *addr_len, const char *address, in_port_t port, int *err)
+{
+    in_port_t net_port = htons(port);
+    memset(addr, 0, sizeof(struct sockaddr_storage));
+    *err = 0;
 
-int addr_pos_in_tab(struct sockaddr_in new_addr, struct sockaddr_in old_addr_tab[], int size) {
-    int i;
-    for (i = 0; i < size; i++) {
-        if(compare_addr(&new_addr, &old_addr_tab[i])) {
-            return i;
-        }
+    // Try to interpret the address as IPv4
+    if(inet_pton(AF_INET, address, &((struct sockaddr_in *)addr)->sin_addr) == 1)
+    {
+        struct sockaddr_in *ipv4_addr = (struct sockaddr_in *)addr;
+        ipv4_addr->sin_family         = AF_INET;
+        ipv4_addr->sin_port           = net_port;
+        *addr_len                     = sizeof(struct sockaddr_in);
     }
-    return size;
+    // If IPv4 fails, try interpreting it as IPv6
+    else if(inet_pton(AF_INET6, address, &((struct sockaddr_in6 *)addr)->sin6_addr) == 1)
+    {
+        struct sockaddr_in6 *ipv6_addr = (struct sockaddr_in6 *)addr;
+        ipv6_addr->sin6_family         = AF_INET6;
+        ipv6_addr->sin6_port           = net_port;
+        *addr_len                      = sizeof(struct sockaddr_in6);
+    }
+    // If neither IPv4 nor IPv6, set an error
+    else
+    {
+        fprintf(stderr, "%s is not a valid IPv4 or IPv6 address\n", address);
+        *err = errno;
+    }
 }
 
-int compare_addr(struct sockaddr_in *a, struct sockaddr_in *b) {
-    if (a->sin_port == b->sin_port &&
-            a->sin_family == b->sin_family &&
-            a->sin_addr.s_addr == b->sin_addr.s_addr) {
-        return true;
-    } else {
-        return false;
+// Function to convert port if network socket as type
+in_port_t convertPort(const char *str, int *err)
+{
+    in_port_t port;
+    char     *endptr;
+    long      val;
+
+    *err  = ERR_NONE;
+    port  = 0;
+    errno = 0;
+    val   = strtol(str, &endptr, 10);    // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
+    // Check if no digits were found
+    if(endptr == str)
+    {
+        *err = ERR_NO_DIGITS;
+        return port;
     }
+
+    // Check for out-of-range errors
+    if(val < 0 || val > UINT16_MAX)
+    {
+        *err = ERR_OUT_OF_RANGE;
+        return port;
+    }
+
+    // Check for trailing invalid characters
+    if(*endptr != '\0')
+    {
+        *err = ERR_INVALID_CHARS;
+        return port;
+    }
+
+    port = (in_port_t)val;
+    return port;
 }
 
-int16_t key_state_from_player(struct Player *player) {
-    int16_t key_state = 0;
-    if (player->left) {
-        key_state = key_state | LEFT_KEY;
+void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets)
+{
+    // Calculate the size needed for player and bullet data
+    size_t data_size = sizeof(Player) + MAX_BULLETS * sizeof(Bullet);
+
+    // Allocate buffer based on calculated data_size
+    char *buffer = malloc(data_size);
+
+    // Ensure that BUFFER_SIZE is large enough to hold the data
+    if(data_size > BUFFER_SIZE)
+    {
+        fprintf(stderr, "Buffer size is too small for player and bullet data!\n");
+        free(buffer);
+        return;
     }
-    if (player->right) {
-        key_state = key_state | RIGHT_KEY;
+
+    // Check if buffer created successfully
+    if(buffer == NULL)
+    {
+        fprintf(stderr, "Buffer allocation failed!\n");
+        return;
     }
-    if (player->up) {
-        key_state = key_state | UP_KEY;
+
+    // Initialize the buffer with 0s
+    memset(buffer, 0, data_size);
+
+    // Copy player state to the buffer
+    memcpy(buffer, player, sizeof(Player));
+
+    // Copy bullets to the buffer after player data
+    memcpy(buffer + sizeof(Player), bullets, MAX_BULLETS * sizeof(Bullet));
+
+    // Send the buffer to the peer
+    if(sendto(ctx->sockfd, buffer, data_size, 0, (struct sockaddr *)&ctx->peer_addr, ctx->peer_addr_len) < 0)
+    {
+        perror("Failed to send game state");
     }
-    if (player->down) {
-        key_state = key_state | DOWN_KEY;
-    }
-    if (player->shoot) {
-        key_state = key_state | ATTACK_KEY;
-    }
-    return key_state;
+
+    // Free the buffer after use
+    free(buffer);
 }
 
-void player_from_key_state(struct Player *player, int16_t key_state) {
-    if (key_state & LEFT_KEY) {
-        player->left = true;
-    } else {
-        player->left = false;
+void receive_game_state(struct network *ctx, Player *player, Bullet *bullets)
+{
+    char *buffer = malloc(BUFFER_SIZE);
+
+    // Check if buffer created successfully
+    if(buffer == NULL)
+    {
+        fprintf(stderr, "Buffer allocation failed!\n");
+        return;
     }
-    if (key_state & RIGHT_KEY) {
-        player->right = true;
-    } else {
-        player->right = false;
+    memset(buffer, 0, BUFFER_SIZE);
+
+    // Receive data from the peer
+    if(recvfrom(ctx->sockfd, buffer, BUFFER_SIZE, 0, NULL, NULL) < 0)
+    {
+        perror("Failed to receive game state");
+        return;
     }
-    if (key_state & UP_KEY) {
-        player->up = true;
-    } else {
-        player->up = false;
-    }
-    if (key_state & DOWN_KEY) {
-        player->down = true;
-    } else {
-        player->down = false;
-    }
-    if (key_state & ATTACK_KEY) {
-        player->shoot = true;
-    } else {
-        player->shoot = false;
-    }
+
+    // Extract player state from the buffer
+    memcpy(player, buffer, sizeof(Player));
+
+    // Extract bullets from the buffer
+    memcpy(bullets, buffer + sizeof(Player), MAX_BULLETS * sizeof(Bullet));
+
+    // Free buffer
+    free(buffer);
+}
+
+void close_network(int sockfd)
+{
+    close(sockfd);
 }
