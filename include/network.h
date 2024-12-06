@@ -29,10 +29,10 @@
 struct network
 {
     int                     sockfd;
-    struct sockaddr_storage local_addr;
-    struct sockaddr_storage peer_addr;
-    socklen_t               local_addr_len;
-    socklen_t               peer_addr_len;
+    struct sockaddr_storage server_addr;
+    struct sockaddr_storage client_addr;
+    socklen_t               server_addr_len;
+    socklen_t               client_addr_len;
 };
 
 // Function to open network socket
@@ -49,5 +49,6 @@ void receive_game_state(struct network *ctx, Player *player, Bullet *bullets);
 
 // Close the socket
 void close_network(int sockfd);
+void cleanup_network(struct network *ctx);
 
 #endif    // NETWORK_H

@@ -1,6 +1,14 @@
 //
 // Created by tommy and Kiet on 11/25/24.
 //
+// ./build/game -s -n 192.168.122.1
+// ./build/game -c -n 192.168.122.1
+
+// ./build/game -s -i rd -n 192.168.122.1
+// ./build/game -c -i rd -n 192.168.122.1
+
+// ./build/game -s -n 192.168.122.1
+// ./build/game -c -n 192.168.122.1
 
 #include "../include/game.h"
 #include "../include/network.h"
@@ -59,7 +67,14 @@ int main(int argc, char *argv[])
     // Start the game
     if(opts.ip_address != NULL)
     {
-        start_game(is_server, opts.ip_address, opts.port, opts.input, &err);
+        if(is_server)
+        {
+            server_start_game(opts.ip_address, opts.port, opts.input, &err);
+        }
+        else
+        {
+            client_start_game(opts.ip_address, opts.port, opts.input, &err);
+        }
     }
     else
     {

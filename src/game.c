@@ -5,58 +5,51 @@
 #include "../include/game.h"
 
 // Helper functions prototypes
-static void            render_screen(const Player *player1, const Player *player2, const Bullet bullets[]);
-static void            handle_bullets(Bullet bullets[], Player *opponent);
-static void            check_bullets_collide(Bullet bullets[]);
-static void            shoot_bullet(Bullet bullets[], const Player *shooter);
-static int             find_inactive_bullet(Bullet bullets[]);
-static char            get_random_input(void);
-static char            get_joystick_input(SDL_GameController *controller);
-static struct network *get_socket(bool is_server, const char *ip_address, in_port_t port, int *err);
-void                   sleep_in_microseconds(long time);
+static void render_screen(const Player *player1, const Player *player2, const Bullet bullets[]);
+static void handle_bullets(Bullet bullets[], Player *opponent);
+static void check_bullets_collide(Bullet bullets[]);
+static void shoot_bullet(Bullet bullets[], const Player *shooter);
+static int  find_inactive_bullet(Bullet bullets[]);
+static char get_random_input(void);
+static char get_joystick_input(SDL_GameController *controller);
+void        sleep_in_microseconds(long time);
 
-void start_game(bool is_server, const char *ip_address, in_port_t port, const char *input_method, int *err)
+void server_start_game(const char *ip_address, in_port_t port, const char *input_method, int *err)
 {
-    // Initialize players
-    Player local_player;
-    Player remote_player;
-
-    // Initialize bullets
-    Bullet bullets[MAX_BULLETS] = {0};
-
-    // Initialize SDL for joystick input
+    // Declare all variables at the beginning
+    Player              server_player;
+    Player              client_player;
+    Bullet              bullets[MAX_BULLETS] = {0};
+    struct network     *ctx;
     SDL_GameController *controller = NULL;
+    int                 game_state = ACTIVE;
 
-    // Initialize network context
-    struct network *ctx;
-
-    int running = ACTIVE;
-
-    if(is_server)
-    {
-        init_player(&local_player, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
-        init_player(&remote_player, 3 * SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
-    }
-    else
-    {
-        init_player(&local_player, 3 * SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
-        init_player(&remote_player, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
-    }
+    init_player(&server_player, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
+    init_player(&client_player, 3 * SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
 
     for(int i = 0; i < MAX_BULLETS; i++)
     {
-        bullets[i].active = DEAD;
+        bullets[i].active = INACTIVE;
     }
 
     // Initialize network
-    ctx = get_socket(is_server, ip_address, port, err);
+    ctx = openNetworkSocketServer(ip_address, port, err);
+    // Check if the operation failed
+    if(ctx == NULL)
+    {
+        perror("Failed to open server network socket");
+        if(err)
+        {
+            *err = -1;    // Indicate error
+        }
+    }
 
     // Initialize ncurses
     initscr();
     noecho();
     curs_set(FALSE);
     keypad(stdscr, TRUE);
-    timeout(0);    // Non-blocking input
+    timeout(0);
 
     if(strcmp(input_method, "js") == 0)
     {
@@ -87,7 +80,7 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
         }
     }
 
-    while(running == 1)
+    while(game_state == ACTIVE)
     {
         char input = 0;
         if(strcmp(input_method, "kb") == 0)
@@ -115,33 +108,33 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
             // Player 1 controls (WASD + Space to shoot)
             if(input == 'w' || input == 'a' || input == 's' || input == 'd' || input == 'W' || input == 'A' || input == 'S' || input == 'D')
             {
-                update_player_position(&local_player, input);
-                wrap_player_position(&local_player);
+                update_player_position(&server_player, input);
+                wrap_player_position(&server_player);
             }
             else if(input == ' ')
             {    // Space to shoot
-                shoot_bullet(bullets, &local_player);
+                shoot_bullet(bullets, &server_player);
             }
         }
 
         // Update bullets
-        handle_bullets(bullets, &remote_player);
-        handle_bullets(bullets, &local_player);
+        handle_bullets(bullets, &server_player);
+        handle_bullets(bullets, &client_player);
         check_bullets_collide(bullets);
 
-        if(local_player.alive != ACTIVE || remote_player.alive != ACTIVE)
+        if(server_player.active != ACTIVE || client_player.active != ACTIVE)
         {
-            running = DEAD;
+            game_state = INACTIVE;
         }
 
         // Render the screen
         clear();
-        render_screen(&local_player, &remote_player, bullets);
+        render_screen(&server_player, &client_player, bullets);
         refresh();
 
         // Send and receive game state
-        send_game_state(ctx, &local_player, bullets);
-        receive_game_state(ctx, &remote_player, bullets);
+        send_game_state(ctx, &server_player, bullets);
+        receive_game_state(ctx, &client_player, bullets);
 
         // Delay for smoother gameplay
         sleep_in_microseconds(TIME);
@@ -152,13 +145,157 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
     endwin();
 
     // Check game-ending conditions
-    if(local_player.alive != ACTIVE)
+    if(server_player.active != ACTIVE)
     {
-        printf("Remote player wins!\n");
+        printf("Client player wins!\n");
     }
-    else if(remote_player.alive != ACTIVE)
+    else if(client_player.active != ACTIVE)
     {
-        printf("Local player wins!\n");
+        printf("Server player wins!\n");
+    }
+    else
+    {
+        printf("Game Over!\n");
+    }
+}
+
+void client_start_game(const char *ip_address, in_port_t port, const char *input_method, int *err)
+{
+    // Declare all variables at the beginning
+    Player              server_player;
+    Player              client_player;
+    Bullet              bullets[MAX_BULLETS] = {0};
+    struct network     *ctx;
+    SDL_GameController *controller = NULL;
+    int                 game_state = ACTIVE;
+
+    init_player(&server_player, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
+    init_player(&client_player, 3 * SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
+
+    for(int i = 0; i < MAX_BULLETS; i++)
+    {
+        bullets[i].active = INACTIVE;
+    }
+
+    // Initialize network
+    ctx = openNetworkSocketClient(ip_address, port, err);
+    if(ctx == NULL)
+    {
+        perror("Failed to open client network socket");
+        if(err)
+        {
+            *err = -1;    // Indicate error
+        }
+    }
+
+    // Initialize ncurses
+    initscr();
+    noecho();
+    curs_set(FALSE);
+    keypad(stdscr, TRUE);
+    timeout(0);
+
+    if(strcmp(input_method, "js") == 0)
+    {
+        if(SDL_Init(SDL_INIT_GAMECONTROLLER) != 0)
+        {
+            fprintf(stderr, "SDL_Init Error: %s\n", SDL_GetError());
+            endwin();
+            return;
+        }
+
+        if(SDL_NumJoysticks() > 0)
+        {
+            controller = SDL_GameControllerOpen(0);
+            if(!controller)
+            {
+                fprintf(stderr, "Could not open game controller: %s\n", SDL_GetError());
+                SDL_Quit();
+                endwin();
+                return;
+            }
+        }
+        else
+        {
+            fprintf(stderr, "No game controllers connected.\n");
+            SDL_Quit();
+            endwin();
+            return;
+        }
+    }
+
+    while(game_state == ACTIVE)
+    {
+        char input = 0;
+        if(strcmp(input_method, "kb") == 0)
+        {
+            // Get keyboard input
+            input = (char)getch();
+        }
+        else if(strcmp(input_method, "js") == 0)
+        {
+            input = get_joystick_input(controller);
+        }
+        else if(strcmp(input_method, "rd") == 0)
+        {
+            // Generate random input based on timer
+            input = get_random_input();
+        }
+        else
+        {
+            fprintf(stderr, "Unknown input method '%s'.\n", input_method);
+            return;
+        }
+
+        if(input != 0)
+        {
+            // Player 1 controls (WASD + Space to shoot)
+            if(input == 'w' || input == 'a' || input == 's' || input == 'd' || input == 'W' || input == 'A' || input == 'S' || input == 'D')
+            {
+                update_player_position(&client_player, input);
+                wrap_player_position(&client_player);
+            }
+            else if(input == ' ')
+            {    // Space to shoot
+                shoot_bullet(bullets, &client_player);
+            }
+        }
+
+        // Update bullets
+        handle_bullets(bullets, &client_player);
+        handle_bullets(bullets, &server_player);
+        check_bullets_collide(bullets);
+
+        if(server_player.active != ACTIVE || client_player.active != ACTIVE)
+        {
+            game_state = INACTIVE;
+        }
+
+        // Render the screen
+        clear();
+        render_screen(&server_player, &client_player, bullets);
+        refresh();
+
+        // Send and receive game state
+        send_game_state(ctx, &client_player, bullets);
+        receive_game_state(ctx, &server_player, bullets);
+
+        // Delay for smoother gameplay
+        sleep_in_microseconds(TIME);
+    }
+
+    // Cleanup
+    close_network(ctx->sockfd);
+    endwin();
+
+    // Check game-ending conditions
+    if(server_player.active != ACTIVE)
+    {
+        printf("Client player wins!\n");
+    }
+    else if(client_player.active != ACTIVE)
+    {
+        printf("Server player wins!\n");
     }
     else
     {
@@ -169,13 +306,13 @@ void start_game(bool is_server, const char *ip_address, in_port_t port, const ch
 static void render_screen(const Player *player1, const Player *player2, const Bullet bullets[])
 {
     // Draw players
-    if(player1->alive)
+    if(player1->active)
     {
-        mvprintw(player1->y, player1->x, "M");
+        mvprintw(player1->y, player1->x, "S");
     }
-    if(player2->alive)
+    if(player2->active)
     {
-        mvprintw(player2->y, player2->x, "E");
+        mvprintw(player2->y, player2->x, "C");
     }
 
     // Draw bullets for Player 1
@@ -194,10 +331,10 @@ static void handle_bullets(Bullet bullets[], Player *opponent)
     {
         if(bullets[i].active)
         {
-            move_bullet(&bullets[i], opponent);
+            move_bullet(&bullets[i]);
             if(is_bullet_shoot(&bullets[i], opponent))
             {
-                opponent->alive   = 0;    // Opponent is hit
+                opponent->active  = 0;    // Opponent is hit
                 bullets[i].active = 0;    // Deactivate the bullet
             }
         }
@@ -327,46 +464,6 @@ static char get_joystick_input(SDL_GameController *controller)
         }
     }
     return 0;
-}
-
-// Function to get which type of input are passing through command-line
-static struct network *get_socket(bool is_server, const char *ip_address, in_port_t port, int *err)
-{
-    struct network *ctx = NULL;
-
-    // Network socket server as type
-    if(ip_address != NULL)
-    {
-        // If the user choose server type
-        if(is_server == 1)
-        {
-            ctx = openNetworkSocketServer(ip_address, port, err);
-        }
-
-        // If the user choose client type
-        else
-        {
-            ctx = openNetworkSocketClient(ip_address, port, err);
-        }
-
-        // Check if the operation failed
-        if(ctx == NULL)
-        {
-            perror("Failed to open network socket");
-            if(err)
-            {
-                *err = -1;    // Indicate error
-            }
-        }
-    }
-
-    // Invalid type
-    else
-    {
-        perror("IP Address is invalid");
-    }
-
-    return ctx;
 }
 
 void sleep_in_microseconds(long time)

@@ -5,61 +5,10 @@ struct network *openNetworkSocketServer(const char *ip_address, in_port_t port, 
     struct network *ctx = malloc(sizeof(struct network));
     Player          temp;
 
-    ctx->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if(ctx->sockfd < 0)
-    {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    // Set up local address structure
-    setupNetworkAddress(&(ctx->local_addr), &(ctx->local_addr_len), ip_address, port, err);
-    if(*err != 0)
-    {
-        close(ctx->sockfd);
-        free(ctx);
-        exit(EXIT_FAILURE);
-    }
-
-    // Bind the socket to the local address
-    if(bind(ctx->sockfd, (struct sockaddr *)&(ctx->local_addr), ctx->local_addr_len) < 0)
-    {
-        perror("Bind failed");
-        close(ctx->sockfd);
-        free(ctx);
-        exit(EXIT_FAILURE);
-    }
-    printf("Server initialized and waiting for client...\n");
-
-    // Ensure correct address length for recvfrom
-    ctx->peer_addr_len = sizeof(ctx->peer_addr);
-
-    // Wait for the first message to get the client's address
-    if(recvfrom(ctx->sockfd, &temp, sizeof(temp), 0, (struct sockaddr *)&(ctx->peer_addr), &(ctx->peer_addr_len)) < 0)
-    {
-        perror("Failed to receive initial message");
-        close(ctx->sockfd);
-        free(ctx);
-        exit(EXIT_FAILURE);
-    }
-
-    // Debugging the peer address
-    printf("Client connected! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
-
-    return ctx;
-}
-
-// Function to open client network socket
-struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, int *err)
-{
-    struct network *ctx                 = malloc(sizeof(struct network));
-    char            buffer[BUFFER_SIZE] = {0};
-    Player          temp                = {0};
-
-    // Check if network context can't be created
     if(ctx == NULL)
     {
-        perror("Failed to allocate memory for network context");
+        perror("Memory allocation for network context failed!");
+        *err = errno;
         return NULL;
     }
 
@@ -67,33 +16,81 @@ struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, 
     if(ctx->sockfd < 0)
     {
         perror("Socket creation failed");
-        exit(EXIT_FAILURE);
+        *err = errno;
+        cleanup_network(ctx);
+        return NULL;
     }
 
-    // Set up peer address structure
-    setupNetworkAddress(&(ctx->peer_addr), &(ctx->peer_addr_len), ip_address, port, err);
+    setupNetworkAddress(&(ctx->server_addr), &(ctx->server_addr_len), ip_address, port, err);
     if(*err != 0)
     {
-        perror("Fa");
-        close(ctx->sockfd);
-        free(ctx);
-        exit(EXIT_FAILURE);
+        cleanup_network(ctx);
+        return NULL;
     }
 
-    // Send an initial message to the server
-    memcpy(buffer, &temp, sizeof(Player));
-    if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&(ctx->peer_addr), ctx->peer_addr_len) < 0)
+    if(bind(ctx->sockfd, (struct sockaddr *)&(ctx->server_addr), ctx->server_addr_len) < 0)
+    {
+        perror("Bind failed");
+        *err = errno;
+        cleanup_network(ctx);
+        return NULL;
+    }
+
+    printf("Server initialized and waiting for client...\n");
+
+    ctx->client_addr_len = sizeof(ctx->client_addr);
+
+    if(recvfrom(ctx->sockfd, &temp, sizeof(temp), 0, (struct sockaddr *)&(ctx->client_addr), &(ctx->client_addr_len)) < 0)
+    {
+        perror("Failed to receive initial message");
+        *err = errno;
+        cleanup_network(ctx);
+        return NULL;
+    }
+
+    printf("Client connected! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->client_addr)->sin_addr));
+
+    return ctx;
+}
+
+// Function to open client network socket
+struct network *openNetworkSocketClient(const char *ip_address, in_port_t port, int *err)
+{
+    struct network *ctx  = malloc(sizeof(struct network));
+    Player          temp = {0};
+
+    if(ctx == NULL)
+    {
+        perror("Failed to allocate memory for network context");
+        *err = errno;
+        return NULL;
+    }
+
+    ctx->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(ctx->sockfd < 0)
+    {
+        perror("Socket creation failed");
+        *err = errno;
+        cleanup_network(ctx);
+        return NULL;
+    }
+
+    setupNetworkAddress(&(ctx->client_addr), &(ctx->client_addr_len), ip_address, port, err);
+    if(*err != 0)
+    {
+        cleanup_network(ctx);
+        return NULL;
+    }
+
+    if(sendto(ctx->sockfd, &temp, sizeof(Player), 0, (struct sockaddr *)&(ctx->client_addr), ctx->client_addr_len) < 0)
     {
         perror("Failed to send initial message");
-        if(ctx->sockfd >= 0)
-        {
-            close(ctx->sockfd);
-        }
-        free(ctx);
-        exit(EXIT_FAILURE);
+        *err = errno;
+        cleanup_network(ctx);
+        return NULL;
     }
 
-    printf("Connected to server! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->peer_addr)->sin_addr));
+    printf("Connected to server! Address: %s\n", inet_ntoa(((struct sockaddr_in *)&ctx->client_addr)->sin_addr));
     return ctx;
 }
 
@@ -187,7 +184,7 @@ void send_game_state(struct network *ctx, const Player *player, const Bullet *bu
     memcpy(buffer + sizeof(Player), bullets, MAX_BULLETS * sizeof(Bullet));
 
     // Send the buffer to the peer
-    if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&ctx->peer_addr, ctx->peer_addr_len) < 0)
+    if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&ctx->client_addr, ctx->client_addr_len) < 0)
     {
         perror("Failed to send game state");
     }
@@ -225,7 +222,24 @@ void receive_game_state(struct network *ctx, Player *player, Bullet *bullets)
     free(buffer);
 }
 
+// Close network socket
 void close_network(int sockfd)
 {
-    close(sockfd);
+    if(sockfd >= 0)
+    {
+        close(sockfd);
+    }
+}
+
+// Free all network resouces
+void cleanup_network(struct network *ctx)
+{
+    if(ctx)
+    {
+        if(ctx->sockfd >= 0)
+        {
+            close(ctx->sockfd);
+        }
+        free(ctx);
+    }
 }

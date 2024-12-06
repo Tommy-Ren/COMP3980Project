@@ -20,6 +20,7 @@
 #define MAX_COUNTER 100
 #define NUM 8000
 
-void start_game(bool is_server, const char *ip_address, in_port_t port, const char *input_method, int *err);
+void server_start_game(const char *ip_address, in_port_t port, const char *input_method, int *err);
+void client_start_game(const char *ip_address, in_port_t port, const char *input_method, int *err);
 
 #endif    // GAME_H

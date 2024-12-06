@@ -463,11 +463,8 @@ makefile
 
 # Ignore binary files
 *-traceable
-
-.idea/codeStyles/
-
+.idea
+.vscode
 .flags
-
 CMakeLists.txt
-
 build/
