@@ -114,14 +114,16 @@ void move_bullet(Bullet *bullet)
 
 int is_bullet_shoot(const Bullet *bullet, const Player *player)
 {
+    int next_x;
+    int next_y;
+
     if(!bullet->active || !player->active)
     {
         return 0;
     }
 
-    // Calculate the bullet's next position based on its direction, with wrapping
-    int next_x = bullet->x;
-    int next_y = bullet->y;
+    next_x = bullet->x;
+    next_y = bullet->y;
 
     switch(bullet->direction)
     {
