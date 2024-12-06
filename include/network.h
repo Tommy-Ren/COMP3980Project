@@ -18,7 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE (sizeof(Player) + (MAX_BULLETS * sizeof(Bullet)))
+#define BUFFER_SIZE (sizeof(Player) + (MAX_BULLETS * sizeof(Bullet)) + sizeof(int))
 #define PORT 12345
 #define ERR_NONE 0
 #define ERR_NO_DIGITS 1
@@ -44,8 +44,8 @@ void            setupNetworkAddress(struct sockaddr_storage *addr, socklen_t *ad
 in_port_t convertPort(const char *str, int *err);
 
 // Function to handle game state
-void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets);
-void receive_game_state(struct network *ctx, Player *player, Bullet *bullets);
+void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets, int *game_state);
+void receive_game_state(struct network *ctx, Player *player, Bullet *bullets, int *game_state);
 
 // Close the socket
 void close_network(int sockfd);

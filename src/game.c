@@ -56,6 +56,7 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
         if(SDL_Init(SDL_INIT_GAMECONTROLLER) != 0)
         {
             fprintf(stderr, "SDL_Init Error: %s\n", SDL_GetError());
+            cleanup_network(ctx);
             endwin();
             return;
         }
@@ -67,6 +68,7 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
             {
                 fprintf(stderr, "Could not open game controller: %s\n", SDL_GetError());
                 SDL_Quit();
+                cleanup_network(ctx);
                 endwin();
                 return;
             }
@@ -75,6 +77,7 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
         {
             fprintf(stderr, "No game controllers connected.\n");
             SDL_Quit();
+            cleanup_network(ctx);
             endwin();
             return;
         }
@@ -100,6 +103,8 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
         else
         {
             fprintf(stderr, "Unknown input method '%s'.\n", input_method);
+            cleanup_network(ctx);
+            endwin();
             return;
         }
 
@@ -127,21 +132,27 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
             game_state = INACTIVE;
         }
 
+        // Send and receive game state
+        send_game_state(ctx, &server_player, bullets, &game_state);
+        receive_game_state(ctx, &client_player, bullets, &game_state);
+
+        // Check if game has ended
+        if(game_state == INACTIVE)
+        {
+            break;
+        }
+
         // Render the screen
         clear();
         render_screen(&server_player, &client_player, bullets);
         refresh();
-
-        // Send and receive game state
-        send_game_state(ctx, &server_player, bullets);
-        receive_game_state(ctx, &client_player, bullets);
 
         // Delay for smoother gameplay
         sleep_in_microseconds(TIME);
     }
 
     // Cleanup
-    close_network(ctx->sockfd);
+    cleanup_network(ctx);
     endwin();
 
     // Check game-ending conditions
@@ -155,7 +166,7 @@ void server_start_game(const char *ip_address, in_port_t port, const char *input
     }
     else
     {
-        printf("Game Over!\n");
+        printf("No player wins!\n");
     }
 }
 
@@ -200,6 +211,7 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
         if(SDL_Init(SDL_INIT_GAMECONTROLLER) != 0)
         {
             fprintf(stderr, "SDL_Init Error: %s\n", SDL_GetError());
+            cleanup_network(ctx);
             endwin();
             return;
         }
@@ -211,6 +223,7 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
             {
                 fprintf(stderr, "Could not open game controller: %s\n", SDL_GetError());
                 SDL_Quit();
+                cleanup_network(ctx);
                 endwin();
                 return;
             }
@@ -219,6 +232,7 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
         {
             fprintf(stderr, "No game controllers connected.\n");
             SDL_Quit();
+            cleanup_network(ctx);
             endwin();
             return;
         }
@@ -227,6 +241,14 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
     while(game_state == ACTIVE)
     {
         char input = 0;
+
+        // Client should receive game state at the beginning
+        receive_game_state(ctx, &server_player, bullets, &game_state);
+        if(game_state == INACTIVE)
+        {
+            break;
+        }
+
         if(strcmp(input_method, "kb") == 0)
         {
             // Get keyboard input
@@ -244,6 +266,8 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
         else
         {
             fprintf(stderr, "Unknown input method '%s'.\n", input_method);
+            cleanup_network(ctx);
+            endwin();
             return;
         }
 
@@ -266,26 +290,20 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
         handle_bullets(bullets, &server_player);
         check_bullets_collide(bullets);
 
-        if(server_player.active != ACTIVE || client_player.active != ACTIVE)
-        {
-            game_state = INACTIVE;
-        }
+        // Send and receive game state
+        send_game_state(ctx, &client_player, bullets, &game_state);
 
         // Render the screen
         clear();
         render_screen(&server_player, &client_player, bullets);
         refresh();
 
-        // Send and receive game state
-        send_game_state(ctx, &client_player, bullets);
-        receive_game_state(ctx, &server_player, bullets);
-
         // Delay for smoother gameplay
         sleep_in_microseconds(TIME);
     }
 
     // Cleanup
-    close_network(ctx->sockfd);
+    cleanup_network(ctx);
     endwin();
 
     // Check game-ending conditions
@@ -299,7 +317,7 @@ void client_start_game(const char *ip_address, in_port_t port, const char *input
     }
     else
     {
-        printf("Game Over!\n");
+        printf("No player wins!\n");
     }
 }
 

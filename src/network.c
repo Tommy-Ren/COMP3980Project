@@ -162,7 +162,7 @@ in_port_t convertPort(const char *str, int *err)
     return port;
 }
 
-void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets)
+void send_game_state(struct network *ctx, const Player *player, const Bullet *bullets, int *game_state)
 {
     // Calculate the size of the data to be sent
     char *buffer = malloc(BUFFER_SIZE);
@@ -183,6 +183,9 @@ void send_game_state(struct network *ctx, const Player *player, const Bullet *bu
     // Copy bullets to the buffer after player data
     memcpy(buffer + sizeof(Player), bullets, MAX_BULLETS * sizeof(Bullet));
 
+    // Extract game state from the buffer
+    memcpy(buffer + sizeof(Player) + MAX_BULLETS * sizeof(Bullet), game_state, sizeof(*game_state));
+
     // Send the buffer to the peer
     if(sendto(ctx->sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&ctx->client_addr, ctx->client_addr_len) < 0)
     {
@@ -193,7 +196,7 @@ void send_game_state(struct network *ctx, const Player *player, const Bullet *bu
     free(buffer);
 }
 
-void receive_game_state(struct network *ctx, Player *player, Bullet *bullets)
+void receive_game_state(struct network *ctx, Player *player, Bullet *bullets, int *game_state)
 {
     char *buffer = malloc(BUFFER_SIZE);
 
@@ -217,6 +220,9 @@ void receive_game_state(struct network *ctx, Player *player, Bullet *bullets)
 
     // Extract bullets from the buffer
     memcpy(bullets, buffer + sizeof(Player), MAX_BULLETS * sizeof(Bullet));
+
+    // Extract game state from the buffer
+    memcpy(game_state, buffer + sizeof(Player) + MAX_BULLETS * sizeof(Bullet), sizeof(*game_state));
 
     // Free buffer
     free(buffer);
