@@ -118,5 +118,37 @@ int is_bullet_shoot(const Bullet *bullet, const Player *player)
     {
         return 0;
     }
-    return (bullet->x == player->x && bullet->y == player->y);
+
+    // Calculate the bullet's next position based on its direction, with wrapping
+    int next_x = bullet->x;
+    int next_y = bullet->y;
+
+    switch(bullet->direction)
+    {
+        case FACE_UP:
+            next_y = (bullet->y - 1 + SCREEN_HEIGHT) % SCREEN_HEIGHT;
+            break;
+        case FACE_DOWN:
+            next_y = (bullet->y + 1) % SCREEN_HEIGHT;
+            break;
+        case FACE_LEFT:
+            next_x = (bullet->x - 1 + SCREEN_WIDTH) % SCREEN_WIDTH;
+            break;
+        case FACE_RIGHT:
+            next_x = (bullet->x + 1) % SCREEN_WIDTH;
+            break;
+        default:
+            return 0;
+    }
+
+    // Check if the bullet passes through or lands on the player's position
+    if((bullet->x == player->x && bullet->y == player->y) ||    // Bullet already at player
+       (next_x == player->x && next_y == player->y) ||          // Bullet moves to player
+       (bullet->x == player->x && next_y == player->y) ||       // Vertical path intersection
+       (next_x == player->x && bullet->y == player->y))
+    {
+        return 1;
+    }
+
+    return 0;
 }
